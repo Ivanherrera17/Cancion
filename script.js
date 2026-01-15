@@ -161,16 +161,26 @@ function handleSpeechResult(transcript) {
 
     // Logic: Find the first word that doesn't match
     let matchCount = 0;
+    let keywordMatchCount = 0;
+    let totalKeywords = 0;
     let firstErrorIndex = -1;
     let spokenIndex = 0;
 
+    // Define stop words (common short words that might be skipped)
+    const stopWords = ['que', 'el', 'la', 'los', 'las', 'y', 'en', 'de', 'por', 'no'];
+
     for (let i = 0; i < targetWords.length; i++) {
         const target = targetWords[i];
+        const isKeyword = target.length > 3 || !stopWords.includes(target);
+        if (isKeyword) totalKeywords++;
+
         let found = false;
 
-        // Look ahead a bit (window of 3)
-        for (let j = spokenIndex; j < Math.min(spokenIndex + 3, spokenWords.length); j++) {
-            if (spokenWords[j] === target) {
+        // Look ahead a bit (window of 4 to be more generous)
+        for (let j = spokenIndex; j < Math.min(spokenIndex + 4, spokenWords.length); j++) {
+            // Allow exact match OR very close match (e.g. singular/plural or small typo)
+            // For now, strict equality is safest without a library, but we can check inclusion
+            if (spokenWords[j] === target || (target.length > 4 && spokenWords[j].includes(target.substring(0, target.length - 1)))) {
                 found = true;
                 spokenIndex = j + 1;
                 break;
@@ -179,6 +189,7 @@ function handleSpeechResult(transcript) {
 
         if (found) {
             matchCount++;
+            if (isKeyword) keywordMatchCount++;
         } else {
             if (firstErrorIndex === -1) {
                 firstErrorIndex = i;
@@ -186,23 +197,34 @@ function handleSpeechResult(transcript) {
         }
     }
 
-    // Stricter Success Criteria
+    // Relaxed Success Criteria
     const totalWords = targetWords.length;
     let isSuccess = false;
 
-    if (totalWords <= 3) {
-        // Short phrase: Must match ALL words
-        isSuccess = (matchCount === totalWords);
+    if (totalWords <= 2) {
+        // Very short phrase (1-2 words): Must match at least 1 word (if 2) or the word (if 1)
+        // But if it's 2 words and one is a stop word, matching the keyword is enough
+        if (totalKeywords > 0) {
+            isSuccess = (keywordMatchCount === totalKeywords);
+        } else {
+            isSuccess = (matchCount === totalWords);
+        }
     } else {
-        // Longer phrase: Allow 1 miss, but must match at least 80%
-        isSuccess = (matchCount >= totalWords - 1) && (matchCount / totalWords >= 0.8);
+        // Longer phrase: 
+        // 1. High general accuracy (> 60%)
+        // 2. OR All keywords matched
+        const accuracy = matchCount / totalWords;
+        const keywordAccuracy = totalKeywords > 0 ? (keywordMatchCount / totalKeywords) : 1;
+
+        isSuccess = (accuracy >= 0.6) || (keywordAccuracy >= 0.8);
     }
 
-    // Edge case: If only 1 word was spoken and it matches, but phrase is long -> Fail
-    if (spokenWords.length === 1 && totalWords > 1) {
-        isSuccess = false;
-        if (firstErrorIndex === -1) firstErrorIndex = 1; // Assume they read first word but stopped
-    }
+    // Edge case: If only 1 word was spoken and it matches, but phrase is long -> Fail?
+    // "Que canten los niños" -> "canten"
+    // matchCount = 1, total = 4 (25%). Keywords = 2. keywordMatch = 1 (50%). Fail. Correct.
+
+    // "que viven en paz" -> "viven paz"
+    // matchCount = 2, total = 4 (50%). Keywords = 2 ("viven", "paz"). keywordMatch = 2 (100%). Pass. Correct.
 
     if (isSuccess) {
         successSound.play();
