@@ -26,34 +26,64 @@ const gentleSound = document.getElementById('gentle-sound');
 // Speech Recognition Setup
 const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
 let recognition;
+let recognitionTimeout;
+let recognizedText = "";
 
 if (SpeechRecognition) {
     recognition = new SpeechRecognition();
-    recognition.lang = 'es-ES';
+    recognition.lang = 'es-MX';
     recognition.continuous = false;
     recognition.interimResults = false;
 
     recognition.onstart = () => {
         isListening = true;
+        recognizedText = "";
         updateUIState();
+
+        // Safety timeout: Stop if no result after 4 seconds (simplified from 6)
+        clearTimeout(recognitionTimeout);
+        recognitionTimeout = setTimeout(() => {
+            if (isListening) {
+                console.log("Recognition timed out");
+                recognition.stop();
+            }
+        }, 4000);
     };
 
     recognition.onend = () => {
         isListening = false;
+        clearTimeout(recognitionTimeout);
         updateUIState();
+
+        // Process the reading here, regardless of whether it was a timeout, silence, or success
+        handleSpeechResult(recognizedText);
     };
 
     recognition.onresult = (event) => {
-        const transcript = event.results[0][0].transcript;
-        handleSpeechResult(transcript);
+        // Just capture the text, don't process yet
+        recognizedText = event.results[0][0].transcript;
     };
 
     recognition.onerror = (event) => {
         console.error("Speech recognition error", event.error);
-        statusMessage.textContent = "No te escuché bien, ¿probamos de nuevo?";
+        clearTimeout(recognitionTimeout);
         isListening = false;
         updateUIState();
+
+        // If error is 'no-speech', treat as silence (mistake)
+        if (event.error === 'no-speech') {
+            handleMistake();
+        } else {
+            statusMessage.textContent = "No te escuché bien, ¿probamos de nuevo?";
+        }
     };
+
+    // Handle 'nomatch' event specifically
+    recognition.onnomatch = () => {
+        clearTimeout(recognitionTimeout);
+        handleMistake();
+    };
+
 } else {
     alert("Lo siento, tu navegador no soporta reconocimiento de voz. Prueba con Chrome o Safari.");
     readBtn.disabled = true;
@@ -112,6 +142,12 @@ function cleanWord(word) {
 
 function handleSpeechResult(transcript) {
     console.log("Heard:", transcript);
+
+    if (!transcript) {
+        handleMistake();
+        return;
+    }
+
     const targetPhrase = songData[currentPhraseIndex];
     const targetWords = targetPhrase.split(' ').map(cleanWord);
     const spokenWords = transcript.split(' ').map(cleanWord);
