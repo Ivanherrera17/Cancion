@@ -34,20 +34,22 @@ if (SpeechRecognition) {
     recognition.lang = 'es-MX';
     recognition.continuous = false;
     recognition.interimResults = false;
+    recognition.maxAlternatives = 1; // Explicitly request single result
 
     recognition.onstart = () => {
         isListening = true;
         recognizedText = "";
         updateUIState();
 
-        // Safety timeout: Stop if no result after 4 seconds (simplified from 6)
+        // Safety timeout: Stop if no result after 5 seconds
+        // 4s might be too short for Android initialization + speaking time
         clearTimeout(recognitionTimeout);
         recognitionTimeout = setTimeout(() => {
             if (isListening) {
                 console.log("Recognition timed out");
                 recognition.stop();
             }
-        }, 4000);
+        }, 5000);
     };
 
     recognition.onend = () => {
@@ -55,33 +57,32 @@ if (SpeechRecognition) {
         clearTimeout(recognitionTimeout);
         updateUIState();
 
-        // Process the reading here, regardless of whether it was a timeout, silence, or success
+        // Process the reading here
         handleSpeechResult(recognizedText);
     };
 
     recognition.onresult = (event) => {
-        // Just capture the text, don't process yet
-        recognizedText = event.results[0][0].transcript;
+        // Just capture the text
+        if (event.results && event.results[0] && event.results[0][0]) {
+            recognizedText = event.results[0][0].transcript;
+        }
     };
 
     recognition.onerror = (event) => {
         console.error("Speech recognition error", event.error);
         clearTimeout(recognitionTimeout);
-        isListening = false;
-        updateUIState();
-
-        // If error is 'no-speech', treat as silence (mistake)
-        if (event.error === 'no-speech') {
-            handleMistake();
-        } else {
-            statusMessage.textContent = "No te escuché bien, ¿probamos de nuevo?";
+        // Don't stop immediately on error, let onend handle the flow
+        // But if it's a fatal error, we might need to reset
+        if (event.error === 'not-allowed' || event.error === 'service-not-allowed') {
+            statusMessage.textContent = "Necesito permiso para escucharte.";
+            isListening = false;
+            updateUIState();
         }
     };
 
-    // Handle 'nomatch' event specifically
     recognition.onnomatch = () => {
+        // No match found
         clearTimeout(recognitionTimeout);
-        handleMistake();
     };
 
 } else {
@@ -95,8 +96,14 @@ function init() {
 
     readBtn.addEventListener('click', () => {
         if (!isListening && recognition) {
-            recognition.start();
-            statusMessage.textContent = "Te escucho...";
+            try {
+                recognition.start();
+                statusMessage.textContent = "Te escucho...";
+            } catch (e) {
+                console.error("Error starting recognition:", e);
+                // If already started, stop it
+                recognition.stop();
+            }
         }
     });
 }
@@ -143,7 +150,7 @@ function cleanWord(word) {
 function handleSpeechResult(transcript) {
     console.log("Heard:", transcript);
 
-    if (!transcript) {
+    if (!transcript || transcript.trim().length === 0) {
         handleMistake();
         return;
     }
@@ -152,7 +159,7 @@ function handleSpeechResult(transcript) {
     const targetWords = targetPhrase.split(' ').map(cleanWord);
     const spokenWords = transcript.split(' ').map(cleanWord);
 
-    // Simple fuzzy matching: check if most words are present in order
+    // Logic: Find the first word that doesn't match
     let matchCount = 0;
     let firstErrorIndex = -1;
     let spokenIndex = 0;
@@ -161,7 +168,7 @@ function handleSpeechResult(transcript) {
         const target = targetWords[i];
         let found = false;
 
-        // Look ahead a bit in spoken words to allow for skipped words or extra noise
+        // Look ahead a bit (window of 3)
         for (let j = spokenIndex; j < Math.min(spokenIndex + 3, spokenWords.length); j++) {
             if (spokenWords[j] === target) {
                 found = true;
@@ -172,28 +179,46 @@ function handleSpeechResult(transcript) {
 
         if (found) {
             matchCount++;
-        } else if (firstErrorIndex === -1) {
-            firstErrorIndex = i;
+        } else {
+            if (firstErrorIndex === -1) {
+                firstErrorIndex = i;
+            }
         }
     }
 
-    const accuracy = matchCount / targetWords.length;
+    // Stricter Success Criteria
+    const totalWords = targetWords.length;
+    let isSuccess = false;
 
-    // Threshold: 70% accuracy or if phrase is very short (<=2 words), need 100% or 1 mismatch
-    const isSuccess = accuracy >= 0.7 || (targetWords.length <= 3 && matchCount >= targetWords.length - 1);
+    if (totalWords <= 3) {
+        // Short phrase: Must match ALL words
+        isSuccess = (matchCount === totalWords);
+    } else {
+        // Longer phrase: Allow 1 miss, but must match at least 80%
+        isSuccess = (matchCount >= totalWords - 1) && (matchCount / totalWords >= 0.8);
+    }
+
+    // Edge case: If only 1 word was spoken and it matches, but phrase is long -> Fail
+    if (spokenWords.length === 1 && totalWords > 1) {
+        isSuccess = false;
+        if (firstErrorIndex === -1) firstErrorIndex = 1; // Assume they read first word but stopped
+    }
 
     if (isSuccess) {
         successSound.play();
         statusMessage.textContent = "¡Muy bien! 🌟";
-
-        // Highlight all green
-        document.querySelectorAll('.word').forEach(el => el.style.color = 'var(--success-color)');
+        document.querySelectorAll('.word').forEach(el => {
+            el.style.color = 'var(--success-color)';
+            el.style.visibility = 'visible'; // Ensure visible
+            el.style.opacity = '1';
+        });
 
         setTimeout(() => {
             currentPhraseIndex++;
             loadPhrase(currentPhraseIndex);
         }, 1500);
     } else {
+        // If no specific error found (e.g. they said completely different words), default to 0
         problematicWordIndex = firstErrorIndex !== -1 ? firstErrorIndex : 0;
         handleMistake();
     }
@@ -205,26 +230,31 @@ function handleMistake() {
 
     const words = document.querySelectorAll('.word');
 
-    // Reset styles first
-    words.forEach(w => {
+    // Reset styles first (but keep text content if we changed it previously?)
+    // Actually, for Attempt 3 we change text. We should reset text if we are retrying?
+    // The user flow implies we stay on the same phrase.
+    // Let's reset text content to original word first to be safe.
+    words.forEach((w, i) => {
         w.classList.remove('highlight', 'dimmed', 'syllables');
-        w.textContent = songData[currentPhraseIndex].split(' ')[Array.from(words).indexOf(w)]; // Reset text
+        w.style.visibility = 'visible';
+        w.style.opacity = '1';
+        w.textContent = songData[currentPhraseIndex].split(' ')[i];
     });
 
     if (attemptCount === 1) {
-        // Attempt 1: Highlight problematic word
-        statusMessage.textContent = "¡Casi! Fíjate en esta palabra";
+        // Attempt 1: Highlight problematic word, others normal
+        statusMessage.textContent = "Casi... mira esta palabra";
         if (words[problematicWordIndex]) {
             words[problematicWordIndex].classList.add('highlight');
         }
     } else if (attemptCount === 2) {
-        // Attempt 2: Dim others, highlight problematic
+        // Attempt 2: HIDE others, show problematic
         statusMessage.textContent = "Vamos despacito, solo esta palabra";
         words.forEach((w, i) => {
             if (i === problematicWordIndex) {
                 w.classList.add('highlight');
             } else {
-                w.classList.add('dimmed');
+                w.style.visibility = 'hidden'; // Hide completely
             }
         });
     } else {
@@ -240,7 +270,7 @@ function handleMistake() {
                 // Speak syllables slowly
                 speakSyllables(originalWord);
             } else {
-                w.classList.add('dimmed');
+                w.style.visibility = 'hidden'; // Hide completely
             }
         });
     }
