@@ -1,0 +1,152 @@
+:root {
+    --primary-color: #FF9F1C; /* Warm Orange */
+    --secondary-color: #2EC4B6; /* Soft Teal */
+    --bg-color: #CBF3F0; /* Light Mint */
+    --text-color: #2B2D42; /* Dark Blue-Grey */
+    --highlight-color: #FFBF69; /* Soft Yellow-Orange */
+    --error-color: #EF476F; /* Soft Red/Pink */
+    --success-color: #06D6A0; /* Green */
+    --font-main: 'Nunito', sans-serif;
+}
+
+* {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+}
+
+body {
+    font-family: var(--font-main);
+    background-color: var(--bg-color);
+    color: var(--text-color);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 100vh;
+    overflow: hidden; /* Prevent scrolling if possible */
+}
+
+.app-container {
+    background-color: white;
+    width: 95%;
+    max-width: 600px;
+    height: 90vh;
+    border-radius: 30px;
+    box-shadow: 0 10px 25px rgba(0,0,0,0.1);
+    display: flex;
+    flex-direction: column;
+    padding: 20px;
+    position: relative;
+}
+
+header {
+    text-align: center;
+    padding: 10px 0;
+}
+
+header h1 {
+    font-size: 1.5rem;
+    color: var(--secondary-color);
+}
+
+.reading-area {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    text-align: center;
+    padding: 20px;
+}
+
+.text-display {
+    font-size: 2.5rem; /* Very large for kids */
+    font-weight: 700;
+    line-height: 1.4;
+    margin-bottom: 20px;
+    min-height: 150px; /* Prevent layout jumps */
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 10px;
+}
+
+.word {
+    padding: 5px 10px;
+    border-radius: 10px;
+    transition: all 0.3s ease;
+}
+
+.word.highlight {
+    background-color: var(--highlight-color);
+    transform: scale(1.1);
+}
+
+.word.dimmed {
+    opacity: 0.3;
+}
+
+.word.syllables {
+    letter-spacing: 2px;
+    color: var(--primary-color);
+}
+
+.controls {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding-bottom: 20px;
+}
+
+.read-btn {
+    background-color: var(--primary-color);
+    color: white;
+    border: none;
+    border-radius: 50px;
+    padding: 15px 40px;
+    font-size: 1.5rem;
+    font-family: var(--font-main);
+    font-weight: 700;
+    cursor: pointer;
+    box-shadow: 0 5px 0 #E08E18; /* 3D effect */
+    transition: transform 0.1s;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.read-btn:active {
+    transform: translateY(5px);
+    box-shadow: none;
+}
+
+.read-btn.listening {
+    background-color: var(--error-color);
+    box-shadow: 0 5px 0 #D63F62;
+    animation: pulse 1.5s infinite;
+}
+
+.status-message {
+    margin-top: 15px;
+    font-size: 1.2rem;
+    color: var(--secondary-color);
+    font-weight: bold;
+    min-height: 1.5em;
+}
+
+@keyframes pulse {
+    0% { transform: scale(1); }
+    50% { transform: scale(1.05); }
+    100% { transform: scale(1); }
+}
+
+/* Responsive adjustments */
+@media (max-width: 400px) {
+    .text-display {
+        font-size: 2rem;
+    }
+    .read-btn {
+        padding: 12px 30px;
+        font-size: 1.2rem;
+    }
+}

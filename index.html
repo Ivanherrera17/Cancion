@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Que canten los niños - Lectura 1°</title>
+    <link rel="stylesheet" href="style.css">
+    <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;700&display=swap" rel="stylesheet">
+</head>
+<body>
+    <div class="app-container">
+        <header>
+            <h1>🎶 Que canten los niños</h1>
+        </header>
+
+        <main class="reading-area">
+            <div id="text-display" class="text-display">
+                <!-- Text will appear here -->
+                <span class="placeholder">Presiona el botón para comenzar</span>
+            </div>
+
+            <div id="feedback-area" class="feedback-area">
+                <!-- Visual feedback (stars, messages) -->
+            </div>
+        </main>
+
+        <footer class="controls">
+            <button id="read-btn" class="read-btn">
+                <span class="icon">🎤</span>
+                <span class="label">Lee conmigo</span>
+            </button>
+            <div id="status-message" class="status-message"></div>
+        </footer>
+    </div>
+
+    <!-- Audio elements for feedback -->
+    <audio id="success-sound" src="https://actions.google.com/sounds/v1/cartoon/cartoon_boing.ogg"></audio>
+    <audio id="gentle-sound" src="https://actions.google.com/sounds/v1/cartoon/pop.ogg"></audio>
+
+    <script src="script.js"></script>
+</body>
+</html>
