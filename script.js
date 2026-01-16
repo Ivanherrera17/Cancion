@@ -15,6 +15,7 @@ let currentPhraseIndex = 0;
 let attemptCount = 0;
 let isListening = false;
 let problematicWordIndex = -1;
+let hasResult = false;
 
 // DOM Elements
 const textDisplay = document.getElementById('text-display');
@@ -39,17 +40,17 @@ if (SpeechRecognition) {
     recognition.onstart = () => {
         isListening = true;
         recognizedText = "";
+        hasResult = false;
         updateUIState();
 
-        // Safety timeout: Stop if no result after 5 seconds
-        // 4s might be too short for Android initialization + speaking time
+        // Safety timeout: Stop if no result after 8 seconds
         clearTimeout(recognitionTimeout);
         recognitionTimeout = setTimeout(() => {
             if (isListening) {
                 console.log("Recognition timed out");
                 recognition.stop();
             }
-        }, 5000);
+        }, 8000);
     };
 
     recognition.onend = () => {
@@ -58,12 +59,18 @@ if (SpeechRecognition) {
         updateUIState();
 
         // Process the reading here
-        handleSpeechResult(recognizedText);
+        if (hasResult) {
+            handleSpeechResult(recognizedText);
+        } else {
+            handleMistake();
+        }
+        hasResult = false;
     };
 
     recognition.onresult = (event) => {
         // Just capture the text
         if (event.results && event.results[0] && event.results[0][0]) {
+            hasResult = true;
             recognizedText = event.results[0][0].transcript;
         }
     };
@@ -147,6 +154,12 @@ function cleanWord(word) {
     return word.toLowerCase().replace(/[.,¡!¿?]/g, '');
 }
 
+function normalize(word) {
+    return cleanWord(word)
+        .replace(/s$/, '') // plural
+        .replace(/es$/, '');
+}
+
 function handleSpeechResult(transcript) {
     console.log("Heard:", transcript);
 
@@ -156,8 +169,8 @@ function handleSpeechResult(transcript) {
     }
 
     const targetPhrase = songData[currentPhraseIndex];
-    const targetWords = targetPhrase.split(' ').map(cleanWord);
-    const spokenWords = transcript.split(' ').map(cleanWord);
+    const targetWords = targetPhrase.split(' ').map(normalize);
+    const spokenWords = transcript.split(' ').map(normalize);
 
     // Logic: Find the first word that doesn't match
     let matchCount = 0;
@@ -217,6 +230,11 @@ function handleSpeechResult(transcript) {
         const keywordAccuracy = totalKeywords > 0 ? (keywordMatchCount / totalKeywords) : 1;
 
         isSuccess = (accuracy >= 0.6) || (keywordAccuracy >= 0.8);
+
+        // Low accuracy fallback
+        if (!isSuccess && accuracy < 0.3) {
+            problematicWordIndex = 0;
+        }
     }
 
     // Edge case: If only 1 word was spoken and it matches, but phrase is long -> Fail?
@@ -241,7 +259,7 @@ function handleSpeechResult(transcript) {
         }, 1500);
     } else {
         // If no specific error found (e.g. they said completely different words), default to 0
-        problematicWordIndex = firstErrorIndex !== -1 ? firstErrorIndex : 0;
+        if (problematicWordIndex === -1) problematicWordIndex = firstErrorIndex !== -1 ? firstErrorIndex : 0;
         handleMistake();
     }
 }
@@ -346,7 +364,7 @@ function syllabify(word) {
     if (manual[clean]) return manual[clean];
 
     // Fallback: split every 2-3 chars roughly (not ideal but works for unknown)
-    return word.split('').join(' ');
+    return word.split('').join(' - ');
 }
 
 function speakSyllables(word) {
@@ -369,6 +387,7 @@ function speakSyllables(word) {
         const utterance = new SpeechSynthesisUtterance(textToSay);
         utterance.lang = 'es-ES';
         utterance.rate = 0.5; // Slow
+        window.speechSynthesis.cancel();
         window.speechSynthesis.speak(utterance);
     }
 }
