@@ -1,12 +1,11 @@
 :root {
-    --primary-color: #FF9F1C; /* Warm Orange */
-    --secondary-color: #2EC4B6; /* Soft Teal */
-    --bg-color: #CBF3F0; /* Light Mint */
-    --text-color: #2B2D42; /* Dark Blue-Grey */
-    --highlight-color: #FFBF69; /* Soft Yellow-Orange */
-    --error-color: #EF476F; /* Soft Red/Pink */
-    --success-color: #06D6A0; /* Green */
-    --font-main: 'Nunito', sans-serif;
+    --primary-color: #3498db;
+    --secondary-color: #f1c40f;
+    --success-color: #2ecc71;
+    --error-color: #e74c3c;
+    --text-color: #2c3e50;
+    --bg-color: #f7f9fc;
+    --card-bg: #ffffff;
 }
 
 * {
@@ -16,137 +15,144 @@
 }
 
 body {
-    font-family: var(--font-main);
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
     background-color: var(--bg-color);
     color: var(--text-color);
     display: flex;
     justify-content: center;
     align-items: center;
     min-height: 100vh;
-    overflow: hidden; /* Prevent scrolling if possible */
+    padding: 20px;
 }
 
-.app-container {
-    background-color: white;
-    width: 95%;
-    max-width: 600px;
-    height: 90vh;
+.container {
+    background-color: var(--card-bg);
+    padding: 40px;
     border-radius: 30px;
-    box-shadow: 0 10px 25px rgba(0,0,0,0.1);
-    display: flex;
-    flex-direction: column;
-    padding: 20px;
-    position: relative;
-}
-
-header {
+    box-shadow: 0 20px 40px rgba(0, 0, 0, 0.05);
+    width: 100%;
+    max-width: 600px;
     text-align: center;
-    padding: 10px 0;
 }
 
-header h1 {
+h1 {
     font-size: 1.5rem;
-    color: var(--secondary-color);
+    margin-bottom: 30px;
+    color: #95a5a6;
+    font-weight: 500;
 }
 
-.reading-area {
-    flex: 1;
-    display: flex;
-    flex-direction: column;
-    justify-content: center;
-    align-items: center;
-    text-align: center;
-    padding: 20px;
-}
-
-.text-display {
-    font-size: 2.5rem; /* Very large for kids */
-    font-weight: 700;
-    line-height: 1.4;
-    margin-bottom: 20px;
-    min-height: 150px; /* Prevent layout jumps */
+#text-display {
+    min-height: 150px;
     display: flex;
     flex-wrap: wrap;
     justify-content: center;
-    gap: 10px;
+    align-items: center;
+    margin-bottom: 40px;
 }
 
+/* Estado BASE: Siempre limpio y neutro */
 .word {
-    padding: 5px 10px;
-    border-radius: 10px;
+    display: inline-block;
+    margin: 0 8px;
+    font-size: 2.2rem;
     transition: all 0.3s ease;
+    opacity: 1;
+    filter: none;
+    transform: scale(1);
+    color: #2c3e50;
+    border-bottom: 2px solid transparent;
 }
 
-.word.highlight {
-    background-color: var(--highlight-color);
-    transform: scale(1.1);
+/* Ayuda Nivel 1: Resaltar (Naranja pedagógico) */
+.highlight {
+    color: #e67e22;
+    font-weight: bold;
 }
 
-.word.dimmed {
-    opacity: 0.3;
+/* Ayuda Nivel 2: Atenuar (Sin blur, solo opacidad) */
+.dimmed {
+    opacity: 0.35;
 }
 
-.word.syllables {
+/* Ayuda Nivel 3: Sílabas */
+.syllables {
+    color: #e74c3c;
     letter-spacing: 2px;
-    color: var(--primary-color);
+    border-bottom: 2px dashed #e74c3c;
+    font-weight: bold;
 }
 
 .controls {
     display: flex;
     flex-direction: column;
     align-items: center;
-    padding-bottom: 20px;
+    gap: 20px;
 }
 
-.read-btn {
+button {
     background-color: var(--primary-color);
     color: white;
     border: none;
+    padding: 18px 40px;
+    font-size: 1.2rem;
     border-radius: 50px;
-    padding: 15px 40px;
-    font-size: 1.5rem;
-    font-family: var(--font-main);
-    font-weight: 700;
     cursor: pointer;
-    box-shadow: 0 5px 0 #E08E18; /* 3D effect */
-    transition: transform 0.1s;
+    transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
     display: flex;
     align-items: center;
     gap: 10px;
+    box-shadow: 0 10px 20px rgba(52, 152, 219, 0.2);
 }
 
-.read-btn:active {
-    transform: translateY(5px);
-    box-shadow: none;
+button:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 15px 30px rgba(52, 152, 219, 0.3);
 }
 
-.read-btn.listening {
-    background-color: var(--error-color);
-    box-shadow: 0 5px 0 #D63F62;
+button:active {
+    transform: translateY(0);
+}
+
+/* Botón: Naranja al escuchar para no asustar */
+.listening {
+    background-color: #f39c12 !important;
     animation: pulse 1.5s infinite;
 }
 
-.status-message {
-    margin-top: 15px;
-    font-size: 1.2rem;
-    color: var(--secondary-color);
-    font-weight: bold;
-    min-height: 1.5em;
-}
-
 @keyframes pulse {
-    0% { transform: scale(1); }
-    50% { transform: scale(1.05); }
-    100% { transform: scale(1); }
+    0% {
+        transform: scale(1);
+    }
+
+    50% {
+        transform: scale(1.05);
+    }
+
+    100% {
+        transform: scale(1);
+    }
 }
 
-/* Responsive adjustments */
-@media (max-width: 400px) {
-    .text-display {
-        font-size: 2rem;
+/* Éxito */
+.success-flash {
+    color: #2ecc71 !important;
+    font-weight: bold;
+    transform: scale(1.05);
+}
+
+#status-message {
+    font-size: 1.1rem;
+    color: #7f8c8d;
+    height: 1.5rem;
+}
+
+@media (max-width: 480px) {
+    .container {
+        padding: 20px;
     }
-    .read-btn {
-        padding: 12px 30px;
-        font-size: 1.2rem;
+
+    .word {
+        font-size: 1.8rem;
     }
 }

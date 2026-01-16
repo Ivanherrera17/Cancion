@@ -10,12 +10,18 @@ const songData = [
     "que no cantarán"
 ];
 
+// Stop words (can be omitted by child)
+const STOP_WORDS = ['que', 'el', 'la', 'los', 'las', 'y', 'en', 'de', 'por', 'no'];
+
 // State
 let currentPhraseIndex = 0;
 let attemptCount = 0;
 let isListening = false;
+let isStarting = false;
+let isTransitioning = false;
 let problematicWordIndex = -1;
 let hasResult = false;
+let currentPhraseWords = [];
 
 // DOM Elements
 const textDisplay = document.getElementById('text-display');
@@ -38,6 +44,8 @@ if (SpeechRecognition) {
     recognition.maxAlternatives = 1;
 
     recognition.onstart = () => {
+        console.log("Recognition started");
+        isStarting = false;
         isListening = true;
         recognizedText = "";
         hasResult = false;
@@ -47,43 +55,57 @@ if (SpeechRecognition) {
         clearTimeout(recognitionTimeout);
         recognitionTimeout = setTimeout(() => {
             if (isListening) {
-                console.log("Recognition timed out");
+                console.log("Recognition timed out (safety)");
                 recognition.stop();
             }
         }, 8000);
     };
 
     recognition.onend = () => {
+        console.log("Recognition ended. hasResult:", hasResult);
+        isStarting = false;
         isListening = false;
         clearTimeout(recognitionTimeout);
         updateUIState();
 
-        if (hasResult) {
+        // If we are already in a success transition, do nothing
+        if (isTransitioning) return;
+
+        // Process result or handle as mistake
+        if (hasResult && recognizedText.trim().length > 0) {
             handleSpeechResult(recognizedText);
         } else {
+            // Silence, timeout, or error
             handleMistake();
         }
+
+        // Reset for next attempt
         hasResult = false;
+        recognizedText = "";
     };
 
     recognition.onresult = (event) => {
         if (event.results && event.results[0] && event.results[0][0]) {
             hasResult = true;
             recognizedText = event.results[0][0].transcript;
+            console.log("Result captured:", recognizedText);
         }
     };
 
     recognition.onerror = (event) => {
-        console.error("Speech recognition error", event.error);
+        console.error("Speech recognition error:", event.error);
         clearTimeout(recognitionTimeout);
+
         if (event.error === 'not-allowed' || event.error === 'service-not-allowed') {
             statusMessage.textContent = "Necesito permiso para escucharte.";
-            isListening = false;
-            updateUIState();
         }
+
+        isStarting = false;
+        updateUIState();
     };
 
     recognition.onnomatch = () => {
+        console.log("No match found");
         clearTimeout(recognitionTimeout);
     };
 
@@ -97,207 +119,257 @@ function init() {
     loadPhrase(currentPhraseIndex);
 
     readBtn.addEventListener('click', () => {
-        if (!isListening && recognition) {
+        if (!isListening && !isStarting && !isTransitioning && recognition) {
             try {
+                isStarting = true;
                 recognition.start();
                 statusMessage.textContent = "Te escucho...";
+                updateUIState();
             } catch (e) {
                 console.error("Error starting recognition:", e);
-                recognition.stop();
+                isStarting = false;
+                isListening = false;
+                updateUIState();
+                try { recognition.stop(); } catch (err) { }
             }
         }
     });
 }
 
+// --- FUNCIÓN DE LIMPIEZA OBLIGATORIA ---
+function clearAllVisualStates() {
+    const wordsElements = document.querySelectorAll('.word');
+    wordsElements.forEach(w => {
+        w.classList.remove('highlight', 'dimmed', 'syllables', 'success-flash');
+        w.style.display = "inline-block";
+        w.style.opacity = "1";
+        w.style.color = "";
+        w.style.fontWeight = "";
+        // Restaurar texto original si estaba en sílabas
+        const original = w.getAttribute('data-original');
+        if (original) w.textContent = original;
+    });
+}
+
 function loadPhrase(index) {
+    // Reset de estado lógico
+    attemptCount = 0;
+    problematicWordIndex = -1;
+    recognizedText = "";
+
     if (index >= songData.length) {
-        textDisplay.innerHTML = "<div style='width:100%'>¡Muy bien! 🎉<br>Terminaste la canción.</div>";
+        textDisplay.innerHTML = "<h2 style='color:#2ecc71'>¡Lo lograste! 🎉</h2><p>Lees muy bien.</p>";
         readBtn.style.display = 'none';
         statusMessage.textContent = "";
         return;
     }
 
-    const phrase = songData[index];
-    const words = phrase.split(' ');
+    currentPhraseWords = songData[index].split(' ');
     textDisplay.innerHTML = '';
-    words.forEach((word, i) => {
+
+    currentPhraseWords.forEach((word) => {
         const span = document.createElement('span');
         span.textContent = word;
         span.className = 'word';
-        span.id = `word-${i}`;
-        span.dataset.word = normalize(word);
+        // Guardamos el original desde el nacimiento del elemento
+        span.setAttribute('data-original', word);
         textDisplay.appendChild(span);
     });
 
-    attemptCount = 0;
-    problematicWordIndex = -1;
-    statusMessage.textContent = "Vamos a leer";
+    statusMessage.textContent = "Presiona el micro y lee";
 }
 
 function updateUIState() {
-    if (isListening) {
+    if (isListening || isStarting) {
         readBtn.classList.add('listening');
-        readBtn.querySelector('.label').textContent = "Escuchando...";
+        readBtn.innerHTML = "<span><span>🎤</span> Escuchando...</span>";
     } else {
         readBtn.classList.remove('listening');
-        readBtn.querySelector('.label').textContent = "Lee conmigo";
+        readBtn.innerHTML = "<span>Lee conmigo</span>";
     }
 }
+
+// --- LÓGICA DE NORMALIZACIÓN MEJORADA ---
 
 function cleanWord(word) {
-    return word.toLowerCase().replace(/[.,¡!¿?]/g, '');
+    return word.toLowerCase()
+        .normalize("NFD").replace(/[\u0300-\u036f]/g, "") // Quita tildes pero mantiene la letra
+        .replace(/[.,¡!¿?]/g, '');
 }
 
-function normalize(word) {
-    return cleanWord(word).replace(/s$/, '').replace(/es$/, '');
+function normalizeForComparison(word) {
+    let w = cleanWord(word);
+    w = w.replace(/ñ/g, 'n'); // El ASR a veces confunde ñ con n
+    w = w.replace(/s$/, '');  // Ignorar plurales (niños vs niño)
+    return w;
 }
 
-// --- SIMPLIFIED EVALUATION ---
-// Success if:
-// 1. Child says at least 50% of the words
-// 2. Main words appear in any order
-function handleSpeechResult(transcript) {
-    console.log("Heard:", transcript);
+// --- COMPARACIÓN FLEXIBLE (TOLERANCIA A ERRORES) ---
 
-    if (!transcript || transcript.trim().length === 0) {
-        handleMistake();
-        return;
-    }
+function isCloseEnough(spoken, target) {
+    const s = normalizeForComparison(spoken);
+    const t = normalizeForComparison(target);
 
-    const targetPhrase = songData[currentPhraseIndex];
-    const targetWords = targetPhrase.split(' ').map(normalize);
-    const spokenWords = transcript.split(' ').map(normalize);
+    if (s === t) return true;
+    if (s.startsWith(t) || t.startsWith(s)) return true;
 
-    // Count how many target words were spoken (in any order)
-    let matchCount = 0;
-    let firstMissedIndex = -1;
-
-    for (let i = 0; i < targetWords.length; i++) {
-        const target = targetWords[i];
-        if (spokenWords.includes(target)) {
-            matchCount++;
-        } else {
-            if (firstMissedIndex === -1) {
-                firstMissedIndex = i;
-            }
+    // Distancia Levenshtein simple: permite 1 error de caracter
+    if (Math.abs(s.length - t.length) <= 1) {
+        let mismatches = 0;
+        let i = 0, j = 0;
+        while (i < s.length && j < t.length) {
+            if (s[i] !== t[j]) mismatches++;
+            i++; j++;
         }
+        return mismatches <= 1;
+    }
+    return false;
+}
+
+function isKeyword(word) {
+    const clean = cleanWord(word);
+    return clean.length > 2 && !STOP_WORDS.includes(clean);
+}
+
+// --- EVALUACIÓN PEDAGÓGICA ---
+
+function handleSpeechResult(transcript) {
+    console.log("Evaluating:", transcript);
+    const targetWords = currentPhraseWords;
+    const spokenWords = transcript.split(' ');
+
+    const targetKeywords = [];
+    const keywordIndices = [];
+
+    targetWords.forEach((word, i) => {
+        if (isKeyword(word)) {
+            targetKeywords.push(word);
+            keywordIndices.push(i);
+        }
+    });
+
+    // Si no hay keywords (frases cortas como "dolor"), usamos la palabra completa
+    if (targetKeywords.length === 0) {
+        const match = spokenWords.some(sw => isCloseEnough(sw, targetWords[0]));
+        if (match) return showSuccess();
+        problematicWordIndex = 0;
+        return handleMistake();
     }
 
-    // Success: at least 50% of words spoken
-    const isSuccess = matchCount >= Math.ceil(targetWords.length / 2);
+    let foundCount = 0;
+    let firstMissedIdx = -1;
 
-    if (isSuccess) {
-        successSound.play();
-        statusMessage.textContent = "¡Muy bien! 🌟";
-        document.querySelectorAll('.word').forEach(el => {
-            el.style.color = 'var(--success-color)';
-            el.style.visibility = 'visible';
-            el.style.opacity = '1';
-        });
+    // Buscamos cada keyword en el transcript
+    targetKeywords.forEach((keyword, index) => {
+        const found = spokenWords.some(sw => isCloseEnough(sw, keyword));
+        if (found) {
+            foundCount++;
+        } else if (firstMissedIdx === -1) {
+            firstMissedIdx = keywordIndices[index];
+        }
+    });
 
-        setTimeout(() => {
-            currentPhraseIndex++;
-            loadPhrase(currentPhraseIndex);
-        }, 1500);
+    // REGLA DE ORO: Si encuentra más del 70% de las palabras clave, damos por buena la frase
+    const successRate = foundCount / targetKeywords.length;
+    console.log("Success rate:", successRate);
+
+    if (successRate >= 0.7) {
+        showSuccess();
     } else {
-        // If no specific error found, default to 0
-        problematicWordIndex = firstMissedIndex !== -1 ? firstMissedIndex : 0;
+        problematicWordIndex = firstMissedIdx !== -1 ? firstMissedIdx : keywordIndices[0];
         handleMistake();
     }
+}
+
+function showSuccess() {
+    isTransitioning = true;
+    if (successSound) successSound.play();
+    statusMessage.textContent = "¡Muy bien! 🌟";
+
+    // Feedback de éxito antes de limpiar
+    document.querySelectorAll('.word').forEach(el => {
+        el.classList.add('success-flash');
+    });
+
+    setTimeout(() => {
+        currentPhraseIndex++;
+        // Limpiamos TODO antes de cargar la siguiente
+        clearAllVisualStates();
+        loadPhrase(currentPhraseIndex);
+        isTransitioning = false;
+    }, 1800);
 }
 
 function handleMistake() {
     attemptCount++;
-    gentleSound.play();
+    if (gentleSound) gentleSound.play();
 
-    const words = document.querySelectorAll('.word');
+    if (problematicWordIndex === -1) problematicWordIndex = 0;
 
-    words.forEach((w, i) => {
-        w.classList.remove('highlight', 'dimmed', 'syllables');
-        w.style.visibility = 'visible';
-        w.style.opacity = '1';
-        w.textContent = songData[currentPhraseIndex].split(' ')[i];
+    const wordsElements = document.querySelectorAll('.word');
+
+    // Limpieza preventiva antes de aplicar el nuevo nivel de ayuda
+    wordsElements.forEach(el => {
+        el.classList.remove('highlight', 'dimmed', 'syllables');
+        el.style.display = "inline-block";
+        el.style.opacity = "1";
     });
 
     if (attemptCount === 1) {
-        statusMessage.textContent = "Casi... mira esta palabra";
-        if (words[problematicWordIndex]) {
-            words[problematicWordIndex].classList.add('highlight');
+        statusMessage.textContent = "¡Casi! Inténtalo de nuevo";
+        if (wordsElements[problematicWordIndex]) {
+            wordsElements[problematicWordIndex].classList.add('highlight');
         }
     } else if (attemptCount === 2) {
-        statusMessage.textContent = "Vamos despacito, solo esta palabra";
-        words.forEach((w, i) => {
-            if (i === problematicWordIndex) {
-                w.classList.add('highlight');
-            } else {
-                w.style.visibility = 'hidden';
-            }
+        statusMessage.textContent = "Mira esta palabra...";
+        wordsElements.forEach((w, i) => {
+            if (i !== problematicWordIndex) w.classList.add('dimmed');
+            else w.classList.add('highlight');
         });
     } else {
-        statusMessage.textContent = "Repite conmigo sílaba por sílaba";
-        words.forEach((w, i) => {
-            if (i === problematicWordIndex) {
-                const originalWord = songData[currentPhraseIndex].split(' ')[i];
-                const syllables = syllabify(originalWord);
-                w.textContent = syllables;
-                w.classList.add('syllables');
-                speakSyllables(originalWord);
-            } else {
-                w.style.visibility = 'hidden';
-            }
+        // NIVEL 3: SÍLABAS (Solo aquí se transforma el texto)
+        statusMessage.textContent = "Digámoslo por trocitos";
+        const targetWord = currentPhraseWords[problematicWordIndex];
+        const syllables = syllabify(targetWord);
+
+        const el = wordsElements[problematicWordIndex];
+        el.setAttribute('data-original', targetWord); // Guardamos para resetear luego
+        el.textContent = syllables;
+        el.classList.add('syllables');
+
+        wordsElements.forEach((w, i) => {
+            if (i !== problematicWordIndex) w.style.display = "none";
         });
+
+        speakSyllables(targetWord);
     }
 }
 
 function syllabify(word) {
     const manual = {
-        "que": "que",
-        "canten": "can - ten",
-        "los": "los",
-        "niños": "ni - ños",
-        "alcancen": "al - can - cen",
-        "el": "el",
-        "cielo": "cie - lo",
-        "viven": "vi - ven",
-        "en": "en",
-        "paz": "paz",
-        "y": "y",
-        "aquellos": "a - que - llos",
-        "sufren": "su - fren",
-        "dolor": "do - lor",
-        "por": "por",
-        "esos": "e - sos",
-        "no": "no",
-        "cantarán": "can - ta - rán"
+        "canten": "can-ten",
+        "niños": "ni-ños",
+        "alcancen": "al-can-cen",
+        "cielo": "cie-lo",
+        "viven": "vi-ven",
+        "aquellos": "a-que-llos",
+        "sufren": "su-fren",
+        "dolor": "do-lor",
+        "esos": "e-sos",
+        "cantaran": "can-ta-ran",
+        "cantarán": "can-ta-ran"
     };
-
     const clean = cleanWord(word);
-    if (manual[clean]) return manual[clean];
-
-    return word.split('').join(' - ');
+    return manual[clean] || word.split('').join('-');
 }
 
 function speakSyllables(word) {
     if ('speechSynthesis' in window) {
-        const clean = cleanWord(word);
-        const manual = {
-            "canten": "can... ten...",
-            "niños": "ni... ños...",
-            "alcancen": "al... can... cen...",
-            "cielo": "cie... lo...",
-            "viven": "vi... ven...",
-            "aquellos": "a... que... llos...",
-            "sufren": "su... fren...",
-            "dolor": "do... lor...",
-            "cantarán": "can... ta... rán...",
-            "esos": "e... sos..."
-        };
-
-        const textToSay = manual[clean] || word;
-        const utterance = new SpeechSynthesisUtterance(textToSay);
-        utterance.lang = 'es-ES';
-        utterance.rate = 0.5;
         window.speechSynthesis.cancel();
+        const syllables = syllabify(word);
+        const utterance = new SpeechSynthesisUtterance(syllables.replace(/-/g, '... '));
+        utterance.lang = 'es-MX';
+        utterance.rate = 0.6;
         window.speechSynthesis.speak(utterance);
     }
 }
